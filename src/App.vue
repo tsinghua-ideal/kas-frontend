@@ -7,27 +7,30 @@
     </el-row>
     <el-row>
       <el-col :span="24">
-        <el-tree :load="loadNode" :props="props" node-key="path" @node-click="handleClick" lazy>
+        <el-tree :load="loadNode" :props="props" node-key="path" lazy>
           <template #default="{ node }">
             <span class="custom-tree-node">
-              <span>{{ node.label }}</span>
-              {{node.info}}
+              <span> {{node.label}} </span>
               <span v-if="node.isLeaf">
                 <el-button type="text" @click="() => show(node)"> Show </el-button>
                 <el-button type="text" @click="() => download(node)"> Download </el-button>
               </span>
+              <span v-else> {{node.info}} </span>
             </span>
           </template>
         </el-tree>
       </el-col>
     </el-row>
+    <el-dialog v-model="dialogVisible" :title="dialogFileName" center width="90%">
+      <div class="code-style"> <span v-html="dialogCode"/> </div>
+    </el-dialog>
   </div>
 </template>
 
 <script>
 
-import { ElMessageBox } from 'element-plus'
 import OSS from 'ali-oss'
+import hljs from 'highlight.js'
 
 const client = new OSS({
   region: 'oss-cn-hangzhou',
@@ -41,6 +44,9 @@ export default {
   name: 'App',
   data() {
     return {
+      dialogVisible: false,
+      dialogFileName: 'filename',
+      dialogCode: 'code',
       props: {
         label: 'name',
         isLeaf: 'leaf'
@@ -49,12 +55,19 @@ export default {
   },
   methods: {
     async show(node) {
-      fetch('https://canvas-imagenet.oss-cn-hangzhou.aliyuncs.com/' + node.key)
+      console.log(node.key)
+      fetch(`https://canvas-imagenet.oss-cn-hangzhou.aliyuncs.com/${node.key}`)
           .then( response => response.text() )
-          .then( text => ElMessageBox.alert(text, node.name, {confirmButtonText: 'OK'}))
+          .then( text => {
+            console.log(text)
+            let highlighted = hljs.highlightAuto(text)
+            this.dialogFileName = node.data.name
+            this.dialogCode = `${highlighted.value}`
+            this.dialogVisible = true
+          })
     },
     async download(node) {
-      window.open('https://canvas-imagenet.oss-cn-hangzhou.aliyuncs.com/' + node.key)
+      window.open(`https://canvas-imagenet.oss-cn-hangzhou.aliyuncs.com/${node.key}`)
     },
     async loadNode(node, resolve) {
       return resolve(await this.listDir(node))
@@ -89,7 +102,7 @@ export default {
           }
         })
       }
-      node.info = '[' + data.length + ' files]'
+      node.info = `[${data.length} files]`
       return data
     }
   }
@@ -115,6 +128,15 @@ export default {
   justify-content: space-between;
   font-size: 14px;
   padding-right: 8px;
+}
+
+.code-style {
+  width: auto;
+  height: auto;
+  word-break: break-all;
+  word-wrap: break-word;
+  white-space: pre-wrap;
+  font-family: Consolas, Monaco, monospace;
 }
 
 </style>
