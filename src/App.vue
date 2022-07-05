@@ -1,29 +1,46 @@
 <template>
-  <div id="app">
-    <el-row>
-      <el-col :span="24">
-        <h1>KAS OSS Viewer</h1>
-      </el-col>
-    </el-row>
-    <el-row>
-      <el-col :span="24">
-        <el-tree :load="loadNode" :props="props" node-key="path" lazy>
-          <template #default="{ node }">
-            <span class="custom-tree-node">
-              <span> {{node.label}} </span>
-              <span v-if="node.isLeaf">
-                <el-button type="text" @click="() => show(node)"> Show </el-button>
-                <el-button type="text" @click="() => download(node)"> Download </el-button>
-              </span>
-              <span v-else> {{node.info}} </span>
-            </span>
-          </template>
-        </el-tree>
-      </el-col>
-    </el-row>
+  <div id="app" style="width:95%; text-align: center; margin: auto">
+    <h1>KAS OSS Viewer</h1>
+    <el-tabs>
+    <el-tab-pane label="Search">
+      <el-row>
+        <el-col :span="22">
+          <el-input v-model="searchPrefix" placeholder="Please input file prefix" clearable @keyup.enter="search" />
+        </el-col>
+        <el-col :span="2">
+          <el-button type="primary" @click="search" style="width:90%;"> Search </el-button>
+        </el-col>
+      </el-row>
+      <el-row>
+        <el-table :data="searchResults" style="width: 100%">
+          <el-table-column fixed prop="path" label="Path" min-width="80%"></el-table-column>
+          <el-table-column fixed="right" label="Actions" min-width="20%">
+            <template #default="scope">
+              <el-button type="text" @click="() => show(scope.row.path)"> Show </el-button>
+              <el-button type="text" @click="() => download(scope.row.path)"> Download </el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+      </el-row>
+    </el-tab-pane>
+    <el-tab-pane label="Files">
+      <el-tree :load="loadNode" :props="props" node-key="path" lazy>
+        <template #default="{ node }">
+      <span class="custom-tree-node">
+        <span> {{node.label}} </span>
+        <span v-if="node.isLeaf">
+          <el-button type="text" @click="() => show(node.key)"> Show </el-button>
+          <el-button type="text" @click="() => download(node.key)"> Download </el-button>
+        </span>
+        <span v-else> {{node.info}} </span>
+      </span>
+        </template>
+      </el-tree>
+    </el-tab-pane>
     <el-dialog v-model="dialogVisible" :title="dialogFileName" center width="90%">
       <div class="code-style"> <span v-html="dialogCode"/> </div>
     </el-dialog>
+  </el-tabs>
   </div>
 </template>
 
@@ -31,6 +48,7 @@
 
 import OSS from 'ali-oss'
 import hljs from 'highlight.js'
+import { ElMessage } from 'element-plus'
 
 const client = new OSS({
   region: 'oss-cn-hangzhou',
@@ -50,39 +68,49 @@ export default {
       props: {
         label: 'name',
         isLeaf: 'leaf'
-      }
+      },
+      searchPrefix: '',
+      searchResults: [],
     }
   },
   methods: {
-    async show(node) {
-      console.log(node.key)
-      fetch(`https://canvas-imagenet.oss-cn-hangzhou.aliyuncs.com/${node.key}`)
+    async search() {
+      if (this.searchPrefix.length === 0)
+        return
+      this.searchResults = await this.listImpl(this.searchPrefix, '', false, true, false)
+      ElMessage({
+        message: 'Search done.',
+        grouping: true,
+        type: 'success',
+      })
+    },
+    async show(path) {
+      fetch(`https://canvas-imagenet.oss-cn-hangzhou.aliyuncs.com/${path}`)
           .then( response => response.text() )
           .then( text => {
             console.log(text)
             let highlighted = hljs.highlightAuto(text)
-            this.dialogFileName = node.data.name
+            this.dialogFileName = path
             this.dialogCode = `${highlighted.value}`
             this.dialogVisible = true
           })
     },
-    async download(node) {
-      window.open(`https://canvas-imagenet.oss-cn-hangzhou.aliyuncs.com/${node.key}`)
+    async download(path) {
+      window.open(`https://canvas-imagenet.oss-cn-hangzhou.aliyuncs.com/${path}`)
     },
     async loadNode(node, resolve) {
       return resolve(await this.listDir(node))
     },
-    async listDir(node) {
-      const dir = node.key
+    async listImpl(prefix, delimiter, allow_dir, allow_objs, allow_exact_dir_match) {
       const files = await client.list({
-        prefix: dir,
-        delimiter: '/',
-        'max-keys': 1000
+        prefix: prefix,
+        delimiter: delimiter,
+        'max-keys': 100
       })
       let data = []
-      if (files.prefixes) {
+      if (files.prefixes && allow_dir) {
         files.prefixes.forEach(subDir => {
-          if (subDir !== dir) {
+          if (subDir !== prefix || allow_exact_dir_match) {
             data.push({
               name: subDir,
               leaf: false,
@@ -91,17 +119,19 @@ export default {
           }
         })
       }
-      if (files.objects) {
+      if (files.objects && allow_objs) {
         files.objects.forEach(obj => {
-          if (obj.name !== dir) {
-            data.push({
-              name: obj.name.split('/').pop(),
-              leaf: true,
-              path: obj.name
-            })
-          }
+          data.push({
+            name: obj.name.split('/').pop(),
+            leaf: true,
+            path: obj.name
+          })
         })
       }
+      return data
+    },
+    async listDir(node) {
+      const data = await this.listImpl(node.key, '/', true, true, false)
       node.info = `[${data.length} files]`
       return data
     }
