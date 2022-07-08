@@ -105,7 +105,7 @@ export default {
       const files = await client.list({
         prefix: prefix,
         delimiter: delimiter,
-        'max-keys': 100
+        'max-keys': 1000
       })
       let data = []
       if (files.prefixes && allow_dir) {
