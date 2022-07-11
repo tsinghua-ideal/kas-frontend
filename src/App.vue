@@ -79,7 +79,7 @@ export default {
         return
       this.searchResults = await this.listImpl(this.searchPrefix, '', false, true, false)
       ElMessage({
-        message: 'Search done.',
+        message: `Search done with ${this.searchResults.length} results`,
         grouping: true,
         type: 'success',
       })
